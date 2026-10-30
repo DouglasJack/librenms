@@ -10,6 +10,7 @@
 /**
  * Twilio Wake-up Call API Transport
  * This transport is designed to leverage your Twilio application to take alerts, and turn it into an annoying buzz.
+ *
  * @author Jack Nolen <jnolen@psl.nmsu.edu>
  * @license GPL
  */
@@ -19,7 +20,6 @@ namespace LibreNMS\Alert\Transport;
 use LibreNMS\Alert\Transport;
 use LibreNMS\Exceptions\AlertTransportDeliveryException;
 use LibreNMS\Util\Http;
-use Illuminate\Support\Facades\Log;
 
 class Twiliophone extends Transport
 {
@@ -29,19 +29,19 @@ class Twiliophone extends Transport
     {
         // Build a userDefinedVariable list, allowing users to inject values into th TwilML field.
         $userDefinedVariables = [
-                '%sysName%' => $alert_data['sysName'] ?? '',
-                '%sysDsecr%' => $alert_data['sysDescr'] ?? '',
-                '%sysContact%' => $alert_data['sysContact'] ?? '',
-                '%os%' => $alert_data['os'] ?? '',
-                '%ip%' => $alert_data['ip'] ?? '',
-                '%hostname%' => $alert_data['hostname'] ?? '',
-                '%display%' => $alert_data['display'] ?? '',
+            '%sysName%' => $alert_data['sysName'] ?? '',
+            '%sysDsecr%' => $alert_data['sysDescr'] ?? '',
+            '%sysContact%' => $alert_data['sysContact'] ?? '',
+            '%os%' => $alert_data['os'] ?? '',
+            '%ip%' => $alert_data['ip'] ?? '',
+            '%hostname%' => $alert_data['hostname'] ?? '',
+            '%display%' => $alert_data['display'] ?? '',
         ];
 
         // To not incure high fees, this filter is here to block emergency calls.
         // The 911 number will charge you $75/call if its not configuerd correctly, not including criminal charges.
         $targetNumber = preg_replace('/\D/', '', $this->config['twilio-to']);
-        $expensiveNumbers = ["911","411","511","611","988","311","711","811"];
+        $expensiveNumbers = ['911', '411', '511', '611', '988', '311', '711', '811'];
         $found = array_any($expensiveNumbers, function ($number) use ($targetNumber) {
                 return str_ends_with($targetNumber, $number) || str_contains($targetNumber, $number);
         });
@@ -58,9 +58,9 @@ class Twiliophone extends Transport
                 . '/Calls.json';
 
         $data = [
-                'From' => $this->config['twilio-sender'],
-                'To' => $this->config['twilio-to'],
-                'Twiml' => strtr($this->config['twilio-ml'], $userDefinedVariables),
+            'From' => $this->config['twilio-sender'],
+            'To' => $this->config['twilio-to'],
+            'Twiml' => strtr($this->config['twilio-ml'], $userDefinedVariables),
         ];
 
         $res = Http::client()->asForm()
