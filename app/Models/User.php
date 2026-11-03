@@ -96,20 +96,30 @@ class User extends Authenticatable
 
     /**
      * Checks if this user has a browser push notification transport configured.
-     *
+     * 
      * @return bool
      */
     public function hasBrowserPushTransport(): bool
     {
         $user_id = \Auth::id();
+        $role_ids = $this->roles()->pluck('id');
 
         return AlertTransport::query()
             ->where('transport_type', 'browserpush')
-            ->where(function ($query) use ($user_id): void {
+            ->where(function ($query) use ($user_id, $role_ids): void {
+            
+            $query->where(function ($query): void {
                 $query->whereJsonContains('transport_config->user', '0')
-                      ->orWhereJsonContains('transport_config->user', "$user_id");
+                      ->where(fn ($query) => $query->whereNull('transport_config->role')
+                          ->orWhereJsonContains('transport_config->role', '0'));
             })
-            ->exists();
+                  ->orWhereJsonContains('transport_config->user', "$user_id");
+
+            foreach ($role_ids as $role_id) {
+                $query->orWhereJsonContains('transport_config->role', "$role_id");
+            }
+        })
+        ->exists();
     }
 
     // ---- Query scopes ----

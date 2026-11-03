@@ -1,35 +1,13 @@
 <?php
 
-/*
- * BrowserPush.php
- *
- * -Description-
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @package    LibreNMS
- * @link       http://librenms.org
- * @copyright  2021 Tony Murray
- * @author     Tony Murray <murraytony@gmail.com>
- */
-
 namespace LibreNMS\Alert\Transport;
 
 use App\Models\User;
 use App\Notifications\AlertNotification;
+use Illuminate\Database\Eloquent\Collection;
 use LibreNMS\Alert\Transport;
 use Notification;
+use Spatie\Permission\Models\Role;
 
 class Browserpush extends Transport
 {
@@ -37,15 +15,35 @@ class Browserpush extends Transport
 
     public function deliverAlert(array $alert_data): bool
     {
-        $users = User::when($this->config['user'] ?? 0, fn ($query, $user_id) => $query->where('user_id', $user_id))->get();
-
-        Notification::send($users, new AlertNotification(
+        Notification::send($this->recipients(), new AlertNotification(
             $alert_data['alert_id'],
             $alert_data['title'],
             $alert_data['msg'],
         ));
 
         return true;
+    }
+
+    private function recipients(): Collection
+    {
+        $userId = (int) ($this->config['user'] ?? 0);
+        $roleId = (int) ($this->config['role'] ?? 0);
+
+        if (! $userId && ! $roleId) {
+            return User::all();
+        }
+
+        $users = new Collection;
+
+        if ($userId) {
+            $users = $users->merge(User::whereKey($userId)->get());
+        }
+
+        if ($roleId) {
+            $users = $users->merge(User::role([$roleId])->get());
+        }
+
+        return $users->unique('user_id')->values();
     }
 
     public static function configTemplate(): array
@@ -61,34 +59,56 @@ class Browserpush extends Transport
             return [htmlentities($label) => $user->user_id];
         })->all();
 
+        $roles = [__('None') => 0];
+        foreach (Role::orderBy('name')->get(['id', 'name']) as $role) {
+            $roles[htmlentities(ucwords(str_replace(['-', '_'], ' ', $role->name)))] = $role->id;
+        }
+
         return [
             'config' => [
                 [
                     'title' => 'User',
                     'name' => 'user',
-                    'descr' => 'LibreNMS User',
+                    'descr' => 'LibreNMS User. "All Users" with no role sends to everyone.',
                     'type' => 'select',
                     'options' => [__('All Users') => 0] + $options,
+                ],
+                [
+                    'title' => 'Role',
+                    'name' => 'role',
+                    'descr' => 'Also send to every member of this role',
+                    'type' => 'select',
+                    'options' => $roles,
                 ],
             ],
             'validation' => [
                 'user' => 'required|zero_or_exists:users,user_id',
+                'role' => 'nullable|zero_or_exists:roles,id',
             ],
         ];
     }
 
     public function displayDetails(): string
     {
-        if ($this->config['user'] == 0) {
-            $count = \DB::table('push_subscriptions')->count();
+        $userId = (int) ($this->config['user'] ?? 0);
+        $roleId = (int) ($this->config['role'] ?? 0);
 
-            return "All users: $count subscriptions";
-        } elseif ($user = User::find($this->config['user'])) {
-            $count = $user->pushSubscriptions()->count();
-
-            return "User: $user->username ($count subscriptions)";
+        if (! $userId && ! $roleId) {
+            return 'All users: ' . \DB::table('push_subscriptions')->count() . ' subscriptions';
         }
 
-        return 'User not found';
+        $parts = [];
+        if ($userId) {
+            $user = User::find($userId);
+            $parts[] = $user ? "User: $user->username" : 'User not found';
+        }
+        if ($roleId) {
+            $role = Role::find($roleId);
+            $parts[] = $role ? "Role: $role->name" : 'Role not found';
+        }
+
+        $count = $this->recipients()->sum(fn (User $u) => $u->pushSubscriptions()->count());
+
+        return implode(', ', $parts) . " ($count subscriptions)";
     }
 }
