@@ -87,7 +87,7 @@ class Browserpush extends Transport
             ],
         ];
     }
-    
+
     public function displayDetails(): string
     {
         if ($this->config['user'] == 0) {
