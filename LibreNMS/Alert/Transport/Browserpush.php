@@ -87,28 +87,19 @@ class Browserpush extends Transport
             ],
         ];
     }
-
+    
     public function displayDetails(): string
     {
-        $userId = (int) ($this->config['user'] ?? 0);
-        $roleId = (int) ($this->config['role'] ?? 0);
+        if ($this->config['user'] == 0) {
+            $count = \DB::table('push_subscriptions')->count();
 
-        if (! $userId && ! $roleId) {
-            return 'All users: ' . \DB::table('push_subscriptions')->count() . ' subscriptions';
+            return "All users: $count subscriptions";
+        } elseif ($user = User::find($this->config['user'])) {
+            $count = $user->pushSubscriptions()->count();
+
+            return "User: $user->username ($count subscriptions)";
         }
 
-        $parts = [];
-        if ($userId) {
-            $user = User::find($userId);
-            $parts[] = $user ? "User: $user->username" : 'User not found';
-        }
-        if ($roleId) {
-            $role = Role::find($roleId);
-            $parts[] = $role ? "Role: $role->name" : 'Role not found';
-        }
-
-        $count = $this->recipients()->sum(fn (User $u) => $u->pushSubscriptions()->count());
-
-        return implode(', ', $parts) . " ($count subscriptions)";
+        return 'User not found';
     }
 }
